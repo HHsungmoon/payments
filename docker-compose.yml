@@ -32,6 +32,9 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       MOCK_PG_URL: http://mock-pg:9090
+      # 워커 polling 짧게 — 운영은 yml 기본값 사용, 시연용 override
+      APP_RECONCILIATION_ZOMBIE_CLEANUP_FIXED_DELAY_MS: ${RECON_ZOMBIE_INTERVAL:-60000}
+      APP_RECONCILIATION_WAITLIST_CLEANUP_FIXED_DELAY_MS: ${RECON_WAIT_INTERVAL:-300000}
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
@@ -63,6 +66,8 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       MOCK_PG_URL: http://mock-pg:9090
+      APP_RECONCILIATION_ZOMBIE_CLEANUP_FIXED_DELAY_MS: ${RECON_ZOMBIE_INTERVAL:-60000}
+      APP_RECONCILIATION_WAITLIST_CLEANUP_FIXED_DELAY_MS: ${RECON_WAIT_INTERVAL:-300000}
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
