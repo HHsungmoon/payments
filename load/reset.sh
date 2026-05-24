@@ -5,10 +5,10 @@ set -euo pipefail
 MYSQL="docker exec payments-mysql mysql -uroot -proot payments -e"
 REDIS="docker exec payments-redis redis-cli"
 
-echo "[reset] booking/payment/point_tx/outbox 정리..."
+echo "[reset] booking/payment/point_transaction/outbox 정리..."
 $MYSQL "
   DELETE FROM payment;
-  DELETE FROM point_tx;
+  DELETE FROM point_transaction;
   DELETE FROM booking;
   DELETE FROM outbox_event;
 " 2>/dev/null

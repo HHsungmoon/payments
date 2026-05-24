@@ -16,7 +16,7 @@ stock=$($REDIS GET stock:product:1)
 wlen=$($REDIS ZCARD waitlist:product:1)
 
 cap_payments=$($MYSQL "SELECT COUNT(*) FROM payment WHERE status='CAPTURED';" 2>/dev/null)
-point_committed=$($MYSQL "SELECT COUNT(*) FROM point_tx WHERE status='COMMITTED';" 2>/dev/null)
+point_committed=$($MYSQL "SELECT COUNT(*) FROM point_transaction WHERE status='COMMITTED';" 2>/dev/null)
 outbox_pending=$($MYSQL "SELECT COUNT(*) FROM outbox_event WHERE status='PENDING';" 2>/dev/null)
 
 echo
