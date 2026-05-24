@@ -1,31 +1,254 @@
+# =====================================================================
+#  Payments — application.yml (v4)
+#
+#  설계 기준: docs/design/01~05, README.md, DECISIONS.md
+#  핵심 튜닝값:
+#    - Tomcat threads.max=400   (1000 TPS × 0.174s = 174 슬롯 + 여유)
+#    - HikariCP pool=50/노드    (1000 TPS × 3쿼리 흡수)
+#    - paymentExecutor 별도 풀  (대기자 승격 후 비동기 결제)
+#    - Resilience4j 5종 방어    (Timeout 1s, CB, Bulkhead 100)
+#    - 대기열 30 / hold·slot TTL 180s / wait:token TTL 1h
+#
+#  환경변수로 override 가능 (.env.example 참조).
+# =====================================================================
+
 spring:
   application:
     name: payments
 
+  # ── DataSource (MySQL 8.4) ─────────────────────────────────
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:payments}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Seoul
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:payments}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Seoul&rewriteBatchedStatements=true
     username: ${DB_USERNAME:payments}
     password: ${DB_PASSWORD:payments}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      pool-name: PaymentsHikariPool
+      maximum-pool-size: 50          # DECISIONS §3 — 1000 TPS × 3쿼리 × 5ms 흡수
+      minimum-idle: 10
+      connection-timeout: 3000        # 3s
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      auto-commit: true
 
+  # ── JPA / Hibernate ────────────────────────────────────────
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: ${JPA_DDL_AUTO:update}    # local=update / prod=validate (schema.sql로 전환 시)
     properties:
       hibernate:
         format_sql: true
-    show-sql: true
-    open-in-view: false
+        jdbc:
+          batch_size: 50
+          order_inserts: true
+          order_updates: true
+          time_zone: Asia/Seoul
+        default_batch_fetch_size: 100
+        connection:
+          provider_disables_autocommit: false
+    show-sql: ${JPA_SHOW_SQL:true}
+    open-in-view: false                # OSIV off (트랜잭션 경계 명확)
 
+  # ── Redis (Lettuce) ────────────────────────────────────────
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      timeout: 200ms                   # 명령 타임아웃
+      connect-timeout: 2s
+      lettuce:
+        pool:
+          max-active: 50
+          max-idle: 20
+          min-idle: 5
+          max-wait: 100ms
+        shutdown-timeout: 100ms
 
+  # ── Graceful Shutdown ──────────────────────────────────────
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+  # ── Threads (Virtual thread 미사용 명시) ────────────────────
+  threads:
+    virtual:
+      enabled: false
+
+# ── Server (Tomcat) ───────────────────────────────────────────
 server:
   port: 8080
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: 400                          # DECISIONS §3
+      min-spare: 50
+    accept-count: 200
+    connection-timeout: 5s
+    max-connections: 1000
+    max-keep-alive-requests: 100
+  forward-headers-strategy: framework   # X-Forwarded-* 처리 (Nginx 뒷단)
+  error:
+    include-message: always
+    include-stacktrace: never
+    include-binding-errors: always
 
+# ── Application 메타정보 (Actuator /info) ─────────────────────
+info:
+  app:
+    name: ${spring.application.name}
+    instance: ${INSTANCE_ID:local}
+    version: 0.0.1-SNAPSHOT
+    model: v4
+    description: "한정 수량 선착순 예약·결제 (모델 D + 대기열)"
+
+# ── Actuator ─────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,loggers
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: db,redis
+        liveness:
+          include: ping
+    info:
+      enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      instance: ${INSTANCE_ID:local}
+      app: ${spring.application.name}
+  health:
+    redis:
+      enabled: true
+    db:
+      enabled: true
+
+# ── 애플리케이션 커스텀 설정 ───────────────────────────────────
+app:
+  instance-id: ${INSTANCE_ID:local}
+
+  # Mock PG 클라이언트
+  mock-pg:
+    base-url: ${MOCK_PG_URL:http://localhost:9090}
+    connect-timeout: 500ms
+    read-timeout: 1s
+
+  # 대기열 시스템 (v4)
+  waitlist:
+    max-size: 30                       # 대기열 최대
+    hold-ttl-seconds: 180              # 선점 hold 키 3분
+    slot-ttl-seconds: 180              # 승격 후 slot 3분
+    wait-token-ttl-seconds: 3600       # wait:token Hash 1h
+    polling-interval-ms: 2000          # 클라이언트 권장 polling 주기
+    estimated-wait-seconds-per-slot: 2 # 사용자 안내용 추정치
+
+  # 멱등성
+  idempotency:
+    ttl-seconds: 86400                 # 24h (Stripe 표준)
+    key-min-length: 16
+    key-max-length: 128
+    server-fallback-prefix: server-    # 서버 생성 키 prefix
+
+  # 분산락
+  lock:
+    booking-ttl-seconds: 5
+    outbox-ttl-seconds: 30
+    reconcile-ttl-seconds: 60
+
+  # 비동기 결제 풀 (paymentExecutor)
+  payment-executor:
+    core-pool-size: 20
+    max-pool-size: 50
+    queue-capacity: 100
+    thread-name-prefix: pay-async-
+    keep-alive-seconds: 60
+
+  # Reconciliation 워커
+  reconciliation:
+    zombie-cleanup-fixed-delay-ms: 60000           # 1분
+    consistency-verify-fixed-delay-ms: 300000      # 5분
+    waitlist-cleanup-fixed-delay-ms: 300000        # 5분
+    zombie-after-minutes: 5                        # AUTHORIZED 5분 경과 시 좀비
+    wait-expiry-hours: 1                           # WAITING 1h 경과 시 만료
+
+  # Outbox 워커
+  outbox:
+    poll-fixed-delay-ms: 1000                       # 1초마다
+    batch-size: 50
+    max-retries: 10                                 # 10회 후 DEAD_LETTER
+
+# ── Resilience4j (5종 방어 세트) ─────────────────────────────
+resilience4j:
+  # ── Timeout ────────────────────────────────────────────────
+  timelimiter:
+    instances:
+      pgGateway:
+        timeout-duration: 1s          # mock 100ms × 10배 안전 마진
+        cancel-running-future: true
+
+  # ── Circuit Breaker ────────────────────────────────────────
+  circuitbreaker:
+    instances:
+      pgGateway:
+        sliding-window-type: TIME_BASED
+        sliding-window-size: 10        # 10초 윈도우
+        minimum-number-of-calls: 20    # 20건 미만은 판단 보류
+        failure-rate-threshold: 50     # 실패율 50%+ → OPEN
+        slow-call-rate-threshold: 80   # 80%가 느리면 OPEN
+        slow-call-duration-threshold: 800ms
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
+
+      redisHealth:
+        sliding-window-size: 5
+        failure-rate-threshold: 60
+        wait-duration-in-open-state: 10s
+        minimum-number-of-calls: 3
+        register-health-indicator: true
+
+  # ── Bulkhead ───────────────────────────────────────────────
+  bulkhead:
+    instances:
+      pgGateway:
+        max-concurrent-calls: 100      # 동시 PG 호출 100
+        max-wait-duration: 100ms       # 초과 시 100ms 대기 후 reject
+
+  # ── Retry ──────────────────────────────────────────────────
+  retry:
+    instances:
+      pgGateway:
+        max-attempts: 1                # AUTHORIZE/CAPTURE는 retry X (Outbox로)
+
+# ── Logging ──────────────────────────────────────────────────
 logging:
   level:
-    org.hibernate.SQL: debug
-    org.hibernate.orm.jdbc.bind: trace
+    root: info
+    org.hibernate.SQL: ${LOG_SQL:debug}
+    org.hibernate.orm.jdbc.bind: ${LOG_SQL_BIND:trace}
+    org.springframework.web: info
+    io.github.resilience4j: info
+    com.platform.payments: ${LOG_APP:debug}
+  pattern:
+    console: "%clr(%d{HH:mm:ss.SSS}){faint} %clr([%X{instance:-${INSTANCE_ID:local}}]){magenta} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m %clr([traceId=%X{traceId:-}]){faint}%n"
+
+# ── SpringDoc OpenAPI (Swagger UI) ───────────────────────────
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+  show-actuator: false
+  default-produces-media-type: application/json
