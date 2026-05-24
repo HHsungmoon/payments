@@ -43,3 +43,6 @@ out/
 load/targets.jsonl
 load/results.bin
 
+### Personal notes (never commit) ###
+docs/miss/
+

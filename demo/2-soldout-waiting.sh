@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# ② 매진 → WAITING — 10건 PAID 후 11번째 호출은 대기열 진입
-# 사전 환경: stock=10, 빈 booking (reset.sh 직후 권장)
+# ② 매진 → WAITING — 1번 PAID + 9건 추가 PAID = 매진 → 11번째 호출은 대기열 진입
+# 사전 환경: stock=9 (시연 ① 직후 권장 — customer 1 이 이미 PAID)
+# active_key UNIQUE 로 같은 customer 재사용 차단되므로 customer 2~10 사용
 set -euo pipefail
 
-echo "── ② 10건 동시 결제 (customer 1~10) ──"
-for i in $(seq 1 10); do
+echo "── ② 9건 동시 결제 (customer 2~10) — 매진 ──"
+for i in $(seq 2 10); do
   ( curl -s -X POST http://localhost/booking \
       -H "Content-Type: application/json" \
       -H "Idempotency-Key: demo-2-c${i}-$(date +%s%N)" \

@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,16 +27,22 @@ public class BookingPersistence {
     @Transactional
     public Booking insertWaitingWithPayments(BookingCreateRequest req, String idemKey, String requestHash,
                                               long totalAmount, String waitToken) {
-        Booking booking = bookingRepo.saveAndFlush(Booking.builder()
-                .customerId(req.customerId())
-                .productId(req.productId())
-                .status(BookingStatus.WAITING)
-                .totalAmount(totalAmount)
-                .idempotencyKey(idemKey)
-                .requestHash(requestHash)
-                .waitToken(waitToken)
-                .enqueuedAt(Instant.now())
-                .build());
+        Booking booking;
+        try {
+            booking = bookingRepo.saveAndFlush(Booking.builder()
+                    .customerId(req.customerId())
+                    .productId(req.productId())
+                    .status(BookingStatus.WAITING)
+                    .totalAmount(totalAmount)
+                    .idempotencyKey(idemKey)
+                    .requestHash(requestHash)
+                    .waitToken(waitToken)
+                    .enqueuedAt(Instant.now())
+                    .build());
+        } catch (DataIntegrityViolationException e) {
+            if (isActiveKeyConflict(e)) throw new AlreadyReservedException("active booking exists");
+            throw e;
+        }
 
         List<Payment> payments = req.payments().stream()
                 .map(p -> Payment.builder()
@@ -55,14 +62,20 @@ public class BookingPersistence {
     @Transactional
     public Booking insertPending(BookingCreateRequest req, String idemKey, String requestHash,
                                  long totalAmount) {
-        Booking booking = bookingRepo.saveAndFlush(Booking.builder()
-                .customerId(req.customerId())
-                .productId(req.productId())
-                .status(BookingStatus.PENDING)
-                .totalAmount(totalAmount)
-                .idempotencyKey(idemKey)
-                .requestHash(requestHash)
-                .build());
+        Booking booking;
+        try {
+            booking = bookingRepo.saveAndFlush(Booking.builder()
+                    .customerId(req.customerId())
+                    .productId(req.productId())
+                    .status(BookingStatus.PENDING)
+                    .totalAmount(totalAmount)
+                    .idempotencyKey(idemKey)
+                    .requestHash(requestHash)
+                    .build());
+        } catch (DataIntegrityViolationException e) {
+            if (isActiveKeyConflict(e)) throw new AlreadyReservedException("active booking exists");
+            throw e;
+        }
 
         List<Payment> payments = req.payments().stream()
                 .map(p -> Payment.builder()
@@ -125,6 +138,16 @@ public class BookingPersistence {
             }
         }
         booking.markFailed(reason, Instant.now());
+    }
+
+    // DataIntegrityViolationException cause 체인에서 uk_booking_active 충돌 식별
+    //   idempotency_key 충돌(uk_booking_idem)과 구분하기 위해 인덱스 이름 매칭
+    private static boolean isActiveKeyConflict(Throwable e) {
+        for (Throwable cur = e; cur != null; cur = cur.getCause()) {
+            String msg = cur.getMessage();
+            if (msg != null && msg.contains("uk_booking_active")) return true;
+        }
+        return false;
     }
 
     public static String newWaitToken() {

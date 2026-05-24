@@ -91,6 +91,12 @@ public class Booking {
     @Column(name = "expired_at")
     private Instant expiredAt;
 
+    // 활성 상태(WAITING/PENDING/PAID)일 때 (customer_id + product_id) 조합. 비활성 시 NULL.
+    // generated column + UNIQUE 인덱스로 1인 1자리 정책 DB 차원 보장.
+    // 실제 컬럼은 SchemaPatcher 가 첫 부팅 시 ALTER TABLE 로 추가 (Hibernate 미지원).
+    @Column(name = "active_key", length = 64, insertable = false, updatable = false)
+    private String activeKey;
+
     // ── 도메인 메서드 ──
 
     public void markPromoted(String slotToken, Instant at) {

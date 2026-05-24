@@ -213,4 +213,30 @@ class BookingScenarioTest {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.reason").value("INSUFFICIENT_POINT"));
     }
+
+    // ── 시나리오 8: 같은 customer + product 재호출 → 409 ─────
+    @Test
+    @DisplayName("S8 — 같은 customer + product 재호출 (다른 idem-key) → 409 ALREADY_RESERVED")
+    void alreadyReserved() throws Exception {
+        long customerId = 17L;
+        String body = """
+                {"customerId":%d,"productId":%d,"payments":[{"method":"CARD","amount":50000}]}
+                """.formatted(customerId, PRODUCT_ID);
+
+        // 첫 호출 — PAID
+        mockMvc.perform(post("/booking")
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PAID"));
+
+        // 다른 idem-key 재호출 — active_key 충돌 (사전 existsBy 또는 DB UNIQUE)
+        mockMvc.perform(post("/booking")
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.reason").value("ALREADY_RESERVED"));
+    }
 }

@@ -92,6 +92,11 @@ public class BookingService {
 
         try {
             return doBook(req, idemKey, requestHash);
+        } catch (AlreadyReservedException e) {
+            // existsBy 사전 체크와 락 사이의 race 안전망 — DB uk_booking_active 가 잡음
+            BookingOutput out = BookingOutput.alreadyReserved(idemKey);
+            cacheIfApplicable(idemKey, requestHash, out);
+            return out;
         } finally {
             lockService.release(lockKey, lockValue.get());
         }

@@ -34,8 +34,8 @@ spring:
   # ── JPA / Hibernate ────────────────────────────────────────
   jpa:
     hibernate:
-      ddl-auto: ${JPA_DDL_AUTO:update}    # local=update / prod=validate (schema.sql로 전환 시)
-    defer-datasource-initialization: true  # JPA 테이블 생성 후 data.sql 실행
+      ddl-auto: ${JPA_DDL_AUTO:validate}   # schema.sql 이 schema 단일 소스 — Hibernate 는 entity 정합 검증만
+    defer-datasource-initialization: false  # schema.sql → data.sql 순서 (Hibernate 미관여)
     properties:
       hibernate:
         format_sql: true
