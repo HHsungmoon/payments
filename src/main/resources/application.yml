@@ -35,6 +35,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: ${JPA_DDL_AUTO:update}    # local=update / prod=validate (schema.sql로 전환 시)
+    defer-datasource-initialization: true  # JPA 테이블 생성 후 data.sql 실행
     properties:
       hibernate:
         format_sql: true
@@ -48,6 +49,11 @@ spring:
           provider_disables_autocommit: false
     show-sql: ${JPA_SHOW_SQL:true}
     open-in-view: false                # OSIV off (트랜잭션 경계 명확)
+
+  # ── SQL Init (data.sql 시드 활성화) ─────────────────────────
+  sql:
+    init:
+      mode: always                       # data.sql 매 시작 시 실행 (INSERT IGNORE 멱등)
 
   # ── Redis (Lettuce) ────────────────────────────────────────
   data:
