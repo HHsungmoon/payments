@@ -20,11 +20,12 @@ public class BookingPersistence {
     private final BookingRepository bookingRepo;
     private final PaymentRepository paymentRepo;
 
-    // tx — booking WAITING 진입 (대기열)
+    // tx — booking WAITING 진입 + payment 사전 INSERT (REQUESTED)
+    // payment row는 승격 후 결제 진행 시 그대로 사용 (사전 멱등 키 확보)
     @Transactional
-    public Booking insertWaiting(BookingCreateRequest req, String idemKey, String requestHash,
-                                 long totalAmount, String waitToken) {
-        return bookingRepo.save(Booking.builder()
+    public Booking insertWaitingWithPayments(BookingCreateRequest req, String idemKey, String requestHash,
+                                              long totalAmount, String waitToken) {
+        Booking booking = bookingRepo.saveAndFlush(Booking.builder()
                 .customerId(req.customerId())
                 .productId(req.productId())
                 .status(BookingStatus.WAITING)
@@ -34,6 +35,19 @@ public class BookingPersistence {
                 .waitToken(waitToken)
                 .enqueuedAt(Instant.now())
                 .build());
+
+        List<Payment> payments = req.payments().stream()
+                .map(p -> Payment.builder()
+                        .bookingId(booking.getId())
+                        .method(p.method())
+                        .amount(p.amount())
+                        .status(PaymentStatus.REQUESTED)
+                        .pgIdempotencyKey(PaymentStrategy.pgIdempotencyKey(booking.getId(), p.method()))
+                        .build())
+                .toList();
+        paymentRepo.saveAll(payments);
+
+        return booking;
     }
 
     // tx1 — booking PENDING + payment 사전 INSERT (REQUESTED)

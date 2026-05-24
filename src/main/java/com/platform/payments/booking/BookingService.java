@@ -24,6 +24,7 @@ import com.platform.payments.pg.PgUnavailableException;
 import com.platform.payments.point.InsufficientPointException;
 import com.platform.payments.product.Product;
 import com.platform.payments.product.ProductRepository;
+import com.platform.payments.promotion.PromotionService;
 import com.platform.payments.stock.PromotionResult;
 import com.platform.payments.stock.StockReserveResult;
 import com.platform.payments.stock.StockService;
@@ -57,6 +58,7 @@ public class BookingService {
     private final OutboxEventRepository outboxRepo;
     private final StringRedisTemplate redis;
     private final WaitlistProperties waitlistProps;
+    private final PromotionService promotionService;
 
     // body 직렬화용 (record + Jackson 호환)
     private final JsonMapper bodyMapper = JsonMapper.builder()
@@ -136,7 +138,7 @@ public class BookingService {
 
     private BookingOutput handleWaitlist(BookingCreateRequest req, String idemKey, String requestHash,
                                           long totalAmount, String waitToken, int position) {
-        Booking booking = persistence.insertWaiting(req, idemKey, requestHash, totalAmount, waitToken);
+        Booking booking = persistence.insertWaitingWithPayments(req, idemKey, requestHash, totalAmount, waitToken);
 
         // wait:token Hash — 메타 + status (결제 정보는 booking/payment row에)
         Map<String, String> hashFields = new HashMap<>();
@@ -245,16 +247,9 @@ public class BookingService {
                 booking.getProductId(), holdHolder, product.getStockTotal());
 
         if (promo.isPromoted()) {
-            // 비동기 승격 처리 (PromotionService) — 다음 메시지에서 구현
-            // 일단 outbox로 트리거
-            outboxRepo.save(OutboxEvent.builder()
-                    .aggregateType(OutboxEvent.AggregateType.BOOKING)
-                    .aggregateId(0L)
-                    .eventType(OutboxEvent.EventType.WAIT_PROMOTED)
-                    .payload("{\"waitToken\":\"" + promo.waitToken() + "\",\"productId\":"
-                            + booking.getProductId() + "}")
-                    .nextAttemptAt(Instant.now())
-                    .build());
+            // 다음 대기자를 READY 상태로 (slot/hold 키 SET + booking PENDING 전환)
+            // 결제는 사용자 polling이 try_promote 통과 시 비동기 진행
+            promotionService.activate(promo.waitToken(), booking.getProductId());
         }
 
         // outbox(BOOKING_FAILED)
@@ -273,7 +268,7 @@ public class BookingService {
 
     // ── 예외 → FailureReason 매핑 ─────────────────────────────
 
-    static FailureReason mapException(Throwable t) {
+    public static FailureReason mapException(Throwable t) {
         if (t instanceof PaymentDeclinedException)    return FailureReason.PAYMENT_DECLINED;
         if (t instanceof InsufficientPointException)  return FailureReason.INSUFFICIENT_POINT;
         if (t instanceof PgTimeoutException)          return FailureReason.PG_TIMEOUT;
