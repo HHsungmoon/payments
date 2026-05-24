@@ -1,0 +1,36 @@
+# Build artifacts
+build/
+.gradle/
+out/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.iml
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Env files
+.env
+.env.local
+
+# Docs (이미지 사이즈 절감 — 빌드에 필요 없음)
+docs/
+README.md
+DECISIONS.md
+HELP.md
+
+# 자신
+docker-compose.yml
+docker/nginx/
+docker/mock-pg/
+
+# CI
+.github/
+
+# Claude / 로컬 도구 캐시
+.claude/

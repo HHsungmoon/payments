@@ -1,4 +1,103 @@
 services:
+  # ───────────── LB ─────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: payments-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      app1:
+        condition: service_healthy
+      app2:
+        condition: service_healthy
+
+  # ───────────── App (2대 분산) ─────────────
+  app1:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    image: payments-app:latest
+    container_name: payments-app1
+    restart: unless-stopped
+    environment:
+      INSTANCE_ID: app1
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-payments}
+      DB_USERNAME: ${MYSQL_USER:-payments}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-payments}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MOCK_PG_URL: http://mock-pg:9090
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 40s
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mock-pg:
+        condition: service_started
+
+  app2:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    image: payments-app:latest
+    container_name: payments-app2
+    restart: unless-stopped
+    environment:
+      INSTANCE_ID: app2
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-payments}
+      DB_USERNAME: ${MYSQL_USER:-payments}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-payments}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MOCK_PG_URL: http://mock-pg:9090
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 40s
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mock-pg:
+        condition: service_started
+
+  # ───────────── Mock PG ─────────────
+  mock-pg:
+    build:
+      context: ./docker/mock-pg
+      dockerfile: Dockerfile
+    image: payments-mock-pg:latest
+    container_name: payments-mock-pg
+    restart: unless-stopped
+    environment:
+      LATENCY_MS: ${MOCK_PG_LATENCY_MS:-100}
+      FAIL_RATE: ${MOCK_PG_FAIL_RATE:-0}
+      TIMEOUT_RATE: ${MOCK_PG_TIMEOUT_RATE:-0}
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ───────────── MySQL ─────────────
   mysql:
     image: mysql:8.4
     container_name: payments-mysql
@@ -15,12 +114,14 @@ services:
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
+      - --max-connections=300       # HikariCP 50/노드 × 2 + 여유
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root}"]
       interval: 5s
       timeout: 3s
       retries: 10
 
+  # ───────────── Redis ─────────────
   redis:
     image: redis:7.4-alpine
     container_name: payments-redis
