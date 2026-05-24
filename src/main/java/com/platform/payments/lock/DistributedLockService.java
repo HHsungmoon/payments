@@ -26,10 +26,6 @@ public class DistributedLockService {
         return "lock:booking:customer:" + customerId + ":prod:" + productId;
     }
 
-    public static String outboxPartitionLockKey(int partition) {
-        return "lock:outbox:partition:" + partition;
-    }
-
     public static String reconcileLockKey(String name) {
         return "lock:reconcile:" + name;
     }
@@ -48,14 +44,6 @@ public class DistributedLockService {
         return tryAcquire(
                 bookingLockKey(customerId, productId),
                 Duration.ofSeconds(lockProps.bookingTtlSeconds())
-        );
-    }
-
-    // outbox 워커 락 (30초)
-    public Optional<String> tryAcquireOutboxLock(int partition) {
-        return tryAcquire(
-                outboxPartitionLockKey(partition),
-                Duration.ofSeconds(lockProps.outboxTtlSeconds())
         );
     }
 

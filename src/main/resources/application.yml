@@ -163,10 +163,9 @@ app:
     key-max-length: 128
     server-fallback-prefix: server-    # 서버 생성 키 prefix
 
-  # 분산락
+  # 분산락 (outbox 워커는 SKIP LOCKED 사용 — 분산락 불필요)
   lock:
     booking-ttl-seconds: 5
-    outbox-ttl-seconds: 30
     reconcile-ttl-seconds: 60
 
   # 비동기 결제 풀 (paymentExecutor)
