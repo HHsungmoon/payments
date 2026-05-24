@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
@@ -33,6 +34,7 @@ class BookingScenarioTest {
 
     @Autowired WebApplicationContext context;
     @Autowired StockService stockService;
+    @Autowired JdbcTemplate jdbc;
     MockMvc mockMvc;
     @Autowired BookingRepository bookingRepo;
     @Autowired PaymentRepository paymentRepo;
@@ -48,6 +50,8 @@ class BookingScenarioTest {
         pointTxRepo.deleteAll();
         bookingRepo.deleteAll();
         outboxRepo.deleteAll();
+        // 테스트 customer 포인트 잔액 복원 (반복 실행 시 누적 차감 방지)
+        jdbc.update("UPDATE customer_point SET balance = 100000 WHERE customer_id BETWEEN 10 AND 99");
         // Redis stock 초기화
         stockService.setStock(PRODUCT_ID, 10);
         // idem 캐시 정리 (이전 테스트 키 잔존 방지)
