@@ -104,6 +104,13 @@ public class BookingPersistence {
         booking.markPaid(now);
     }
 
+    // tx — booking EXPIRED (slot/wait 만료)
+    @Transactional
+    public void markExpired(Long bookingId, FailureReason reason) {
+        Booking booking = bookingRepo.findById(bookingId).orElseThrow();
+        booking.markExpired(reason, Instant.now());
+    }
+
     // tx — booking FAILED (보상 후)
     @Transactional
     public void finalizeFailed(Long bookingId, FailureReason reason) {
