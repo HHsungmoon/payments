@@ -1,4 +1,4 @@
-package com.platform.payments.payment;
+package com.platform.payments.payment.validation;
 
 // 결제 수단 조합 위반 (CARD+YPAY 등) → 422 INVALID_COMBINATION
 public class InvalidPaymentCombinationException extends RuntimeException {

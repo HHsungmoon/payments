@@ -1,5 +1,7 @@
 package com.platform.payments.booking;
 
+import com.platform.payments.booking.dto.BookingCreateRequest;
+import com.platform.payments.booking.dto.BookingOutput;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;

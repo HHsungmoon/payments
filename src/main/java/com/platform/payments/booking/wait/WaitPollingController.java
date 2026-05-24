@@ -1,5 +1,7 @@
-package com.platform.payments.booking;
+package com.platform.payments.booking.wait;
 
+import com.platform.payments.booking.Booking;
+import com.platform.payments.booking.BookingRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;

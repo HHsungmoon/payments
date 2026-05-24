@@ -1,9 +1,9 @@
 package com.platform.payments.common;
 
-import com.platform.payments.booking.WaitTokenNotFoundException;
+import com.platform.payments.booking.wait.WaitTokenNotFoundException;
 import com.platform.payments.idempotency.IdempotencyKeyReusedException;
 import com.platform.payments.idempotency.InvalidIdempotencyKeyException;
-import com.platform.payments.payment.InvalidPaymentCombinationException;
+import com.platform.payments.payment.validation.InvalidPaymentCombinationException;
 import com.platform.payments.point.InsufficientPointException;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;

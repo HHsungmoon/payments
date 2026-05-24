@@ -1,4 +1,4 @@
-package com.platform.payments.booking;
+package com.platform.payments.booking.checkout;
 
 import java.time.LocalDateTime;
 

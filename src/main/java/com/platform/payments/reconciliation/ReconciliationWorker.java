@@ -28,7 +28,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-// 정합성 보정 워커 3종
+// 정합성 보정 워커 3종류
 //   ① 좀비 청소 (1분): payment 좀비 발견 → 보상 + 다음 대기자 승격
 //   ② 정합성 검증 (5분): paid + pending ≤ stock_total
 //   ③ 대기열 만료 (5분): WAITING 1h 경과 → EXPIRED

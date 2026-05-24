@@ -1,5 +1,6 @@
-package com.platform.payments.payment;
+package com.platform.payments.payment.validation;
 
+import com.platform.payments.payment.PaymentRequest;
 import java.util.List;
 import org.springframework.stereotype.Component;
 

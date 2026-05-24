@@ -1,4 +1,10 @@
-package com.platform.payments.payment;
+package com.platform.payments.payment.strategy;
+
+import com.platform.payments.payment.PaymentContext;
+import com.platform.payments.payment.PaymentMethod;
+import com.platform.payments.payment.outcome.AuthOutcome;
+import com.platform.payments.payment.outcome.CaptureOutcome;
+import com.platform.payments.payment.outcome.VoidOutcome;
 
 // 결제 수단별 처리 — Auth / Capture / Void 3-call 통일
 public interface PaymentStrategy {

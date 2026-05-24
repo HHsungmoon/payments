@@ -1,10 +1,11 @@
 package com.platform.payments.booking;
 
+import com.platform.payments.booking.dto.BookingCreateRequest;
 import com.platform.payments.payment.AuthorizedPayment;
 import com.platform.payments.payment.Payment;
 import com.platform.payments.payment.PaymentRepository;
 import com.platform.payments.payment.PaymentStatus;
-import com.platform.payments.payment.PaymentStrategy;
+import com.platform.payments.payment.strategy.PaymentStrategy;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;

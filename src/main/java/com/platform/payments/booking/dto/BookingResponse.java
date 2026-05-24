@@ -1,4 +1,4 @@
-package com.platform.payments.booking;
+package com.platform.payments.booking.dto;
 
 import com.platform.payments.payment.PaymentMethod;
 import com.platform.payments.payment.PaymentStatus;

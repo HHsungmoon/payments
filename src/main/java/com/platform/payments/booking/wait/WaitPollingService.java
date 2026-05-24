@@ -1,4 +1,4 @@
-package com.platform.payments.booking;
+package com.platform.payments.booking.wait;
 
 import com.platform.payments.common.properties.WaitlistProperties;
 import com.platform.payments.promotion.PromotionService;

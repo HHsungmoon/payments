@@ -1,4 +1,6 @@
-package com.platform.payments.payment;
+package com.platform.payments.payment.outcome;
+
+import com.platform.payments.payment.PaymentStatus;
 
 // Strategy.authorize() 결과
 public record AuthOutcome(

@@ -1,4 +1,4 @@
-package com.platform.payments.booking;
+package com.platform.payments.booking.wait;
 
 // GET /booking/wait/{token} polling 응답 — 상태별 다형
 public record WaitStatusResponse(

@@ -1,4 +1,4 @@
-package com.platform.payments.booking;
+package com.platform.payments.booking.wait;
 
 // wait:token 만료 또는 무효 → 410 Gone
 public class WaitTokenNotFoundException extends RuntimeException {

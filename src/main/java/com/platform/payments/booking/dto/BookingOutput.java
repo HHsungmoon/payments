@@ -1,5 +1,6 @@
-package com.platform.payments.booking;
+package com.platform.payments.booking.dto;
 
+import com.platform.payments.booking.wait.WaitingResponse;
 import com.platform.payments.idempotency.CachedResponse;
 
 // BookingService → Controller 결과 wrapper

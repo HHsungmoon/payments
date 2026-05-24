@@ -1,5 +1,10 @@
-package com.platform.payments.payment;
+package com.platform.payments.payment.strategy;
 
+import com.platform.payments.payment.PaymentContext;
+import com.platform.payments.payment.PaymentMethod;
+import com.platform.payments.payment.outcome.AuthOutcome;
+import com.platform.payments.payment.outcome.CaptureOutcome;
+import com.platform.payments.payment.outcome.VoidOutcome;
 import com.platform.payments.point.CustomerPoint;
 import com.platform.payments.point.CustomerPointRepository;
 import com.platform.payments.point.PointTransaction;

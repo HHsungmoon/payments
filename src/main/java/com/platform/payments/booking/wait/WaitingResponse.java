@@ -1,4 +1,4 @@
-package com.platform.payments.booking;
+package com.platform.payments.booking.wait;
 
 // 200 WAITING 응답
 public record WaitingResponse(
