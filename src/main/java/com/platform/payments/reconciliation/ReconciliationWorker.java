@@ -7,6 +7,8 @@ import com.platform.payments.booking.BookingStatus;
 import com.platform.payments.booking.FailureReason;
 import com.platform.payments.common.properties.ReconciliationProperties;
 import com.platform.payments.lock.DistributedLockService;
+import com.platform.payments.outbox.OutboxEvent;
+import com.platform.payments.outbox.OutboxEventRepository;
 import com.platform.payments.payment.AuthorizedPayment;
 import com.platform.payments.payment.Payment;
 import com.platform.payments.payment.PaymentOrchestrator;
@@ -46,6 +48,7 @@ public class ReconciliationWorker {
     private final StockService stockService;
     private final DistributedLockService lockService;
     private final StringRedisTemplate redis;
+    private final OutboxEventRepository outboxRepo;
     private final ReconciliationProperties props;
 
     // ── ① 좀비 청소 ─────────────────────────────────────────
@@ -91,13 +94,27 @@ public class ReconciliationWorker {
             }
 
             // 재고 복구 + 다음 대기자 승격
-            PromotionResult promo = stockService.restoreAndPromote(
-                    booking.getProductId(),
-                    String.valueOf(bookingId),
-                    product.getStockTotal()
-            );
-            if (promo.isPromoted()) {
-                promotionService.activate(promo.waitToken(), booking.getProductId());
+            try {
+                PromotionResult promo = stockService.restoreAndPromote(
+                        booking.getProductId(),
+                        String.valueOf(bookingId),
+                        product.getStockTotal()
+                );
+                if (promo.isPromoted()) {
+                    promotionService.activate(promo.waitToken(), booking.getProductId());
+                }
+            } catch (RuntimeException e) {
+                log.error("STOCK_RESTORE_FAILED bookingId={} cause={}",
+                        bookingId, e.getClass().getSimpleName(), e);
+                outboxRepo.save(OutboxEvent.builder()
+                        .aggregateType(OutboxEvent.AggregateType.BOOKING)
+                        .aggregateId(bookingId)
+                        .eventType(OutboxEvent.EventType.COMPENSATION_STOCK_RESTORE)
+                        .payload("{\"bookingId\":" + bookingId
+                                + ",\"productId\":" + booking.getProductId()
+                                + ",\"cause\":\"" + e.getClass().getSimpleName() + "\"}")
+                        .nextAttemptAt(Instant.now())
+                        .build());
             }
 
             persistence.finalizeFailed(bookingId, FailureReason.TIMEOUT);
@@ -149,6 +166,14 @@ public class ReconciliationWorker {
                                 StockService.waitlistKey(b.getProductId()), b.getWaitToken());
                     }
                     persistence.markExpired(b.getId(), FailureReason.WAIT_TIMEOUT);
+                    outboxRepo.save(OutboxEvent.builder()
+                            .aggregateType(OutboxEvent.AggregateType.BOOKING)
+                            .aggregateId(b.getId())
+                            .eventType(OutboxEvent.EventType.BOOKING_EXPIRED)
+                            .payload("{\"bookingId\":" + b.getId()
+                                    + ",\"reason\":\"WAIT_TIMEOUT\"}")
+                            .nextAttemptAt(Instant.now())
+                            .build());
                     log.info("WAIT_EXPIRED bookingId={} waitToken={}", b.getId(), b.getWaitToken());
                 } catch (Exception e) {
                     log.error("WAIT_CLEANUP_FAILED bookingId={} cause={}",

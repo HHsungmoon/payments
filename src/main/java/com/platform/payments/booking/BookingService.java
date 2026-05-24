@@ -16,6 +16,7 @@ import com.platform.payments.booking.dto.BookingResponse;
 import com.platform.payments.booking.wait.WaitingResponse;
 import com.platform.payments.payment.AuthorizedPayment;
 import com.platform.payments.payment.Payment;
+import com.platform.payments.payment.PaymentMethod;
 import com.platform.payments.payment.PaymentOrchestrator;
 import com.platform.payments.payment.PaymentRepository;
 import com.platform.payments.payment.PaymentRequest;
@@ -190,6 +191,17 @@ public class BookingService {
         try {
             orchestrator.capture(authorized, booking.getId(), req.customerId());
         } catch (RuntimeException e) {
+            // POINT 가 섞여있으면 COMMIT 실패 가능성 — outbox 로 재시도 가시성
+            if (authorized.stream().anyMatch(ap -> ap.method() == PaymentMethod.POINT)) {
+                outboxRepo.save(OutboxEvent.builder()
+                        .aggregateType(OutboxEvent.AggregateType.PAYMENT)
+                        .aggregateId(booking.getId())
+                        .eventType(OutboxEvent.EventType.POINT_COMMIT_RETRY)
+                        .payload("{\"bookingId\":" + booking.getId()
+                                + ",\"cause\":\"" + e.getClass().getSimpleName() + "\"}")
+                        .nextAttemptAt(Instant.now())
+                        .build());
+            }
             // 보상
             orchestrator.compensate(authorized, booking.getId(), req.customerId());
             return handlePaymentFailure(booking, e, holdHolder, product, idemKey, requestHash, authorized);
@@ -244,13 +256,26 @@ public class BookingService {
         persistence.finalizeFailed(booking.getId(), reason);
 
         // 재고 복구 + 다음 대기자 승격
-        PromotionResult promo = stockService.restoreAndPromote(
-                booking.getProductId(), holdHolder, product.getStockTotal());
-
-        if (promo.isPromoted()) {
-            // 다음 대기자를 READY 상태로 (slot/hold 키 SET + booking PENDING 전환)
-            // 결제는 사용자 polling이 try_promote 통과 시 비동기 진행
-            promotionService.activate(promo.waitToken(), booking.getProductId());
+        try {
+            PromotionResult promo = stockService.restoreAndPromote(
+                    booking.getProductId(), holdHolder, product.getStockTotal());
+            if (promo.isPromoted()) {
+                // 다음 대기자를 READY 상태로 (slot/hold 키 SET + booking PENDING 전환)
+                // 결제는 사용자 polling이 try_promote 통과 시 비동기 진행
+                promotionService.activate(promo.waitToken(), booking.getProductId());
+            }
+        } catch (RuntimeException re) {
+            log.error("STOCK_RESTORE_FAILED bookingId={} cause={}",
+                    booking.getId(), re.getClass().getSimpleName(), re);
+            outboxRepo.save(OutboxEvent.builder()
+                    .aggregateType(OutboxEvent.AggregateType.BOOKING)
+                    .aggregateId(booking.getId())
+                    .eventType(OutboxEvent.EventType.COMPENSATION_STOCK_RESTORE)
+                    .payload("{\"bookingId\":" + booking.getId()
+                            + ",\"productId\":" + booking.getProductId()
+                            + ",\"cause\":\"" + re.getClass().getSimpleName() + "\"}")
+                    .nextAttemptAt(Instant.now())
+                    .build());
         }
 
         // outbox(BOOKING_FAILED)

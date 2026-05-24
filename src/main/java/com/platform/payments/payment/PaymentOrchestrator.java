@@ -1,7 +1,10 @@
 package com.platform.payments.payment;
 
+import com.platform.payments.outbox.OutboxEvent;
+import com.platform.payments.outbox.OutboxEventRepository;
 import com.platform.payments.payment.outcome.AuthOutcome;
 import com.platform.payments.payment.strategy.PaymentStrategy;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -20,12 +23,14 @@ import org.springframework.stereotype.Component;
 public class PaymentOrchestrator {
 
     private final Map<PaymentMethod, PaymentStrategy> strategies;
+    private final OutboxEventRepository outboxRepo;
 
-    public PaymentOrchestrator(List<PaymentStrategy> strategyList) {
+    public PaymentOrchestrator(List<PaymentStrategy> strategyList, OutboxEventRepository outboxRepo) {
         this.strategies = strategyList.stream()
                 .collect(Collectors.toUnmodifiableMap(
                         PaymentStrategy::method,
                         Function.identity()));
+        this.outboxRepo = outboxRepo;
     }
 
     // 부분 실패 시 자동 역순 보상 + 예외 전파
@@ -75,7 +80,19 @@ public class PaymentOrchestrator {
             } catch (RuntimeException e) {
                 log.error("COMPENSATION_FAILED method={} authRef={} bookingId={} cause={}",
                         ap.method(), ap.authReference(), bookingId, e.getClass().getSimpleName(), e);
-                // 호출자가 outbox(COMPENSATION_VOID 또는 COMPENSATION_POINT_RELEASE) 적재
+                // 좀비 워커가 5분 후 동일 보상 재시도 — Phase 2 에서 outbox 가 자동 retry
+                outboxRepo.save(OutboxEvent.builder()
+                        .aggregateType(OutboxEvent.AggregateType.PAYMENT)
+                        .aggregateId(bookingId)
+                        .eventType(ap.method().isMain()
+                                ? OutboxEvent.EventType.COMPENSATION_VOID
+                                : OutboxEvent.EventType.COMPENSATION_POINT_RELEASE)
+                        .payload("{\"bookingId\":" + bookingId
+                                + ",\"method\":\"" + ap.method()
+                                + "\",\"authRef\":\"" + ap.authReference()
+                                + "\",\"cause\":\"" + e.getClass().getSimpleName() + "\"}")
+                        .nextAttemptAt(Instant.now())
+                        .build());
             }
         }
     }

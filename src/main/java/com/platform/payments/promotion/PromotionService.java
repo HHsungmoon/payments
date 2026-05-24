@@ -10,6 +10,7 @@ import com.platform.payments.outbox.OutboxEvent;
 import com.platform.payments.outbox.OutboxEventRepository;
 import com.platform.payments.payment.AuthorizedPayment;
 import com.platform.payments.payment.Payment;
+import com.platform.payments.payment.PaymentMethod;
 import com.platform.payments.payment.PaymentOrchestrator;
 import com.platform.payments.payment.PaymentRepository;
 import com.platform.payments.payment.PaymentRequest;
@@ -77,6 +78,16 @@ public class PromotionService {
         redis.opsForHash().putAll(waitKey, updates);
         redis.expire(waitKey, Duration.ofSeconds(waitlistProps.waitTokenTtlSeconds()));
 
+        outboxRepo.save(OutboxEvent.builder()
+                .aggregateType(OutboxEvent.AggregateType.BOOKING)
+                .aggregateId(booking.getId())
+                .eventType(OutboxEvent.EventType.WAIT_PROMOTED)
+                .payload("{\"bookingId\":" + booking.getId()
+                        + ",\"waitToken\":\"" + waitToken
+                        + "\",\"slotToken\":\"" + slotToken + "\"}")
+                .nextAttemptAt(Instant.now())
+                .build());
+
         log.info("WAIT_PROMOTED waitToken={} bookingId={} slotToken={}",
                 waitToken, booking.getId(), slotToken);
     }
@@ -113,6 +124,17 @@ public class PromotionService {
         try {
             orchestrator.capture(authorized, bookingId, customerId);
         } catch (RuntimeException e) {
+            // POINT 가 섞여있으면 COMMIT 실패 가능성 — outbox 로 재시도 가시성
+            if (authorized.stream().anyMatch(ap -> ap.method() == PaymentMethod.POINT)) {
+                outboxRepo.save(OutboxEvent.builder()
+                        .aggregateType(OutboxEvent.AggregateType.PAYMENT)
+                        .aggregateId(bookingId)
+                        .eventType(OutboxEvent.EventType.POINT_COMMIT_RETRY)
+                        .payload("{\"bookingId\":" + bookingId
+                                + ",\"cause\":\"" + e.getClass().getSimpleName() + "\"}")
+                        .nextAttemptAt(Instant.now())
+                        .build());
+            }
             orchestrator.compensate(authorized, bookingId, customerId);
             handleAsyncFailure(booking, e, waitToken);
             return;
@@ -155,13 +177,27 @@ public class PromotionService {
         // 재고 복구 + 다음 대기자 승격 (chain — 단 비동기 결제는 새 polling을 기다림)
         Product product = productRepo.findById(booking.getProductId()).orElse(null);
         if (product != null) {
-            PromotionResult promo = stockService.restoreAndPromote(
-                    booking.getProductId(),
-                    String.valueOf(booking.getId()),
-                    product.getStockTotal()
-            );
-            if (promo.isPromoted()) {
-                activate(promo.waitToken(), booking.getProductId());
+            try {
+                PromotionResult promo = stockService.restoreAndPromote(
+                        booking.getProductId(),
+                        String.valueOf(booking.getId()),
+                        product.getStockTotal()
+                );
+                if (promo.isPromoted()) {
+                    activate(promo.waitToken(), booking.getProductId());
+                }
+            } catch (RuntimeException re) {
+                log.error("STOCK_RESTORE_FAILED bookingId={} cause={}",
+                        booking.getId(), re.getClass().getSimpleName(), re);
+                outboxRepo.save(OutboxEvent.builder()
+                        .aggregateType(OutboxEvent.AggregateType.BOOKING)
+                        .aggregateId(booking.getId())
+                        .eventType(OutboxEvent.EventType.COMPENSATION_STOCK_RESTORE)
+                        .payload("{\"bookingId\":" + booking.getId()
+                                + ",\"productId\":" + booking.getProductId()
+                                + ",\"cause\":\"" + re.getClass().getSimpleName() + "\"}")
+                        .nextAttemptAt(Instant.now())
+                        .build());
             }
         }
 
