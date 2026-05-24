@@ -5,6 +5,7 @@ import com.platform.payments.idempotency.IdempotencyKeyReusedException;
 import com.platform.payments.idempotency.InvalidIdempotencyKeyException;
 import com.platform.payments.payment.validation.InvalidPaymentCombinationException;
 import com.platform.payments.point.InsufficientPointException;
+import com.platform.payments.product.ProductNotFoundException;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -44,6 +45,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> waitNotFound(WaitTokenNotFoundException e) {
         return ResponseEntity.status(410)
                 .body(ErrorResponse.of("EXPIRED", e.getMessage()));
+    }
+
+    @ExceptionHandler(ProductNotFoundException.class)
+    public ResponseEntity<ErrorResponse> productNotFound(ProductNotFoundException e) {
+        return ResponseEntity.status(404)
+                .body(ErrorResponse.of("PRODUCT_NOT_FOUND", e.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

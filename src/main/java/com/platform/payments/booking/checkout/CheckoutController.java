@@ -3,6 +3,7 @@ package com.platform.payments.booking.checkout;
 import com.platform.payments.point.CustomerPoint;
 import com.platform.payments.point.CustomerPointRepository;
 import com.platform.payments.product.Product;
+import com.platform.payments.product.ProductNotFoundException;
 import com.platform.payments.product.ProductRepository;
 import com.platform.payments.stock.StockService;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +24,7 @@ public class CheckoutController {
             @RequestParam Long productId,
             @RequestParam Long customerId) {
         Product product = productRepo.findById(productId)
-                .orElseThrow(() -> new IllegalArgumentException("product not found: " + productId));
+                .orElseThrow(() -> new ProductNotFoundException(productId));
         long balance = customerPointRepo.findById(customerId)
                 .map(CustomerPoint::getBalance).orElse(0L);
         Integer remainingStock = stockService.getStock(productId);

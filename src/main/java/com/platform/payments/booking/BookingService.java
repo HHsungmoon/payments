@@ -23,6 +23,7 @@ import com.platform.payments.payment.PaymentRequest;
 import com.platform.payments.payment.validation.InvalidPaymentCombinationException;
 import com.platform.payments.payment.validation.PaymentCombinationValidator;
 import com.platform.payments.product.Product;
+import com.platform.payments.product.ProductNotFoundException;
 import com.platform.payments.product.ProductRepository;
 import com.platform.payments.promotion.PromotionService;
 import com.platform.payments.stock.PromotionResult;
@@ -110,7 +111,7 @@ public class BookingService {
 
         // 4. product 존재 + 결제 조합 검증
         Product product = productRepo.findById(req.productId())
-                .orElseThrow(() -> new IllegalArgumentException("product not found: " + req.productId()));
+                .orElseThrow(() -> new ProductNotFoundException(req.productId()));
         long totalAmount = req.payments().stream().mapToLong(BookingCreateRequest.PaymentItem::amount).sum();
         try {
             validator.validate(toPaymentRequests(req.payments()), totalAmount);
