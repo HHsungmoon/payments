@@ -1,7 +1,6 @@
 package com.platform.payments.booking;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.platform.payments.common.ErrorResponse;
@@ -60,10 +59,9 @@ public class BookingService {
     private final WaitlistProperties waitlistProps;
     private final PromotionService promotionService;
 
-    // body 직렬화용 (record + Jackson 호환)
+    // 캐시 body 직렬화 — Spring 응답 직렬화와 매칭 위해 record 선언 순서 유지 (sort X)
     private final JsonMapper bodyMapper = JsonMapper.builder()
             .addModule(new JavaTimeModule())
-            .enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
             .build();
 
     public BookingOutput book(BookingCreateRequest req, String idemHeader) {
