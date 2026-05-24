@@ -4,7 +4,6 @@ import com.platform.payments.common.properties.MockPgProperties;
 import io.github.resilience4j.bulkhead.annotation.Bulkhead;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import java.net.http.HttpClient;
-import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -66,7 +65,7 @@ public class MockPgClient implements PaymentGateway {
         try {
             return client.post()
                     .uri("/pg/capture")
-                    .body(Map.of("authId", authId, "idempotencyKey", idempotencyKey))
+                    .body(new CaptureRequest(authId, idempotencyKey))
                     .retrieve()
                     .body(CaptureResult.class);
         } catch (HttpClientErrorException e) {
@@ -88,7 +87,7 @@ public class MockPgClient implements PaymentGateway {
         try {
             return client.post()
                     .uri("/pg/void")
-                    .body(Map.of("authId", authId, "idempotencyKey", idempotencyKey))
+                    .body(new VoidRequest(authId, idempotencyKey))
                     .retrieve()
                     .body(VoidResult.class);
         } catch (HttpClientErrorException e) {

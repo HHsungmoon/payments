@@ -2,7 +2,6 @@ package com.platform.payments.booking;
 
 import com.platform.payments.pg.PaymentDeclinedException;
 import com.platform.payments.pg.PgTimeoutException;
-import com.platform.payments.pg.PgUnavailableException;
 import com.platform.payments.point.InsufficientPointException;
 import io.github.resilience4j.bulkhead.BulkheadFullException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
@@ -16,7 +15,6 @@ public final class FailureReasonMapper {
         if (t instanceof PaymentDeclinedException)    return FailureReason.PAYMENT_DECLINED;
         if (t instanceof InsufficientPointException)  return FailureReason.INSUFFICIENT_POINT;
         if (t instanceof PgTimeoutException)          return FailureReason.PG_TIMEOUT;
-        if (t instanceof PgUnavailableException)      return FailureReason.PG_UNAVAILABLE;
         if (t instanceof CallNotPermittedException)   return FailureReason.PG_UNAVAILABLE;
         if (t instanceof BulkheadFullException)       return FailureReason.PG_UNAVAILABLE;
         return FailureReason.SYSTEM_ERROR;
