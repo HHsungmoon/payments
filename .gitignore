@@ -39,3 +39,7 @@ out/
 ### Local environment ###
 .env
 
+### Load test artifacts ###
+load/targets.jsonl
+load/results.bin
+
