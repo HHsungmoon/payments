@@ -3,8 +3,8 @@ package com.platform.payments.promotion;
 import com.platform.payments.booking.Booking;
 import com.platform.payments.booking.BookingPersistence;
 import com.platform.payments.booking.BookingRepository;
-import com.platform.payments.booking.BookingService;
 import com.platform.payments.booking.FailureReason;
+import com.platform.payments.booking.FailureReasonMapper;
 import com.platform.payments.common.properties.WaitlistProperties;
 import com.platform.payments.outbox.OutboxEvent;
 import com.platform.payments.outbox.OutboxEventRepository;
@@ -146,7 +146,7 @@ public class PromotionService {
     }
 
     private void handleAsyncFailure(Booking booking, RuntimeException e, String waitToken) {
-        FailureReason reason = BookingService.mapException(e);
+        FailureReason reason = FailureReasonMapper.fromException(e);
         log.warn("ASYNC_PAYMENT_FAILED waitToken={} bookingId={} reason={}",
                 waitToken, booking.getId(), reason);
 

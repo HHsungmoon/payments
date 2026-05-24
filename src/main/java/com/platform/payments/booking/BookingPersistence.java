@@ -19,6 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class BookingPersistence {
 
+    // schema.sql 의 UNIQUE 인덱스 이름과 동기화 필요
+    private static final String UK_BOOKING_ACTIVE = "uk_booking_active";
+
     private final BookingRepository bookingRepo;
     private final PaymentRepository paymentRepo;
 
@@ -140,12 +143,12 @@ public class BookingPersistence {
         booking.markFailed(reason, Instant.now());
     }
 
-    // DataIntegrityViolationException cause 체인에서 uk_booking_active 충돌 식별
+    // DataIntegrityViolationException cause 체인에서 active_key 충돌 식별
     //   idempotency_key 충돌(uk_booking_idem)과 구분하기 위해 인덱스 이름 매칭
     private static boolean isActiveKeyConflict(Throwable e) {
         for (Throwable cur = e; cur != null; cur = cur.getCause()) {
             String msg = cur.getMessage();
-            if (msg != null && msg.contains("uk_booking_active")) return true;
+            if (msg != null && msg.contains(UK_BOOKING_ACTIVE)) return true;
         }
         return false;
     }

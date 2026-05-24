@@ -21,18 +21,12 @@ import com.platform.payments.payment.PaymentRepository;
 import com.platform.payments.payment.PaymentRequest;
 import com.platform.payments.payment.validation.InvalidPaymentCombinationException;
 import com.platform.payments.payment.validation.PaymentCombinationValidator;
-import com.platform.payments.pg.PaymentDeclinedException;
-import com.platform.payments.pg.PgTimeoutException;
-import com.platform.payments.pg.PgUnavailableException;
-import com.platform.payments.point.InsufficientPointException;
 import com.platform.payments.product.Product;
 import com.platform.payments.product.ProductRepository;
 import com.platform.payments.promotion.PromotionService;
 import com.platform.payments.stock.PromotionResult;
 import com.platform.payments.stock.StockReserveResult;
 import com.platform.payments.stock.StockService;
-import io.github.resilience4j.bulkhead.BulkheadFullException;
-import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
@@ -241,8 +235,8 @@ public class BookingService {
                                                 String holdHolder, Product product,
                                                 String idemKey, String requestHash,
                                                 List<AuthorizedPayment> authorized) {
-        FailureReason reason = mapException(e);
-        int httpStatus = mapHttpStatus(reason);
+        FailureReason reason = FailureReasonMapper.fromException(e);
+        int httpStatus = FailureReasonMapper.toHttpStatus(reason);
         log.warn("BOOKING_FAILED bookingId={} reason={} cause={}",
                 booking.getId(), reason, e.getClass().getSimpleName());
 
@@ -273,26 +267,6 @@ public class BookingService {
         return out;
     }
 
-    // ── 예외 → FailureReason 매핑 ─────────────────────────────
-
-    public static FailureReason mapException(Throwable t) {
-        if (t instanceof PaymentDeclinedException)    return FailureReason.PAYMENT_DECLINED;
-        if (t instanceof InsufficientPointException)  return FailureReason.INSUFFICIENT_POINT;
-        if (t instanceof PgTimeoutException)          return FailureReason.PG_TIMEOUT;
-        if (t instanceof PgUnavailableException)      return FailureReason.PG_UNAVAILABLE;
-        if (t instanceof CallNotPermittedException)   return FailureReason.PG_UNAVAILABLE;
-        if (t instanceof BulkheadFullException)       return FailureReason.PG_UNAVAILABLE;
-        return FailureReason.SYSTEM_ERROR;
-    }
-
-    static int mapHttpStatus(FailureReason reason) {
-        return switch (reason) {
-            case INSUFFICIENT_POINT, PAYMENT_DECLINED, LIMIT_EXCEEDED -> 422;
-            case PG_TIMEOUT, PG_UNAVAILABLE                            -> 503;
-            default                                                     -> 422;
-        };
-    }
-
     // ── helpers ──────────────────────────────────────────────
 
     private static List<PaymentRequest> toPaymentRequests(List<BookingCreateRequest.PaymentItem> items) {
@@ -306,17 +280,13 @@ public class BookingService {
         //   200 / 409 SOLD_OUT / 409 ALREADY_RESERVED → 캐시
         //   409 IN_PROGRESS / 422 / 5xx → 캐시 X
         int s = out.httpStatus();
-        if (s == 200 || s == 409) {
-            // IN_PROGRESS 만 제외
-            if (out.body() instanceof ErrorResponse er && "IN_PROGRESS".equals(er.reason())) {
-                return;
-            }
-            try {
-                String json = bodyMapper.writeValueAsString(out.body());
-                idempotencyService.store(idemKey, requestHash, s, json);
-            } catch (JsonProcessingException e) {
-                log.error("IDEM_CACHE_STORE_FAILED key={}", idemKey, e);
-            }
+        if (s != 200 && s != 409) return;
+        if (s == 409 && out.body() instanceof ErrorResponse er && "IN_PROGRESS".equals(er.reason())) return;
+        try {
+            String json = bodyMapper.writeValueAsString(out.body());
+            idempotencyService.store(idemKey, requestHash, s, json);
+        } catch (JsonProcessingException e) {
+            log.error("IDEM_CACHE_STORE_FAILED key={}", idemKey, e);
         }
     }
 }
